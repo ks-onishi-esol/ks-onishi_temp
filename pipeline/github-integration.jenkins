@@ -50,7 +50,18 @@ pipeline {
                     echo 'Deploying...'
                     // 実際のデプロイコマンドをここに記述
                     bat 'set'
-                    error("error occured!!")
+
+                    // ビルド番号毎に結果を変える。
+                    def buildNumber = currentBuild.number as Integer
+                    def result = buildNumber % 3
+
+                    if (result == 0) {
+                        echo "success"
+                    } else if (result == 1) {
+                        unstable("unstable")
+                    } else {
+                        error("error")
+                    }
                 }
             }
         }
