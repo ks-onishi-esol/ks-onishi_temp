@@ -3,23 +3,25 @@ pipeline {
 
     environment {
         GITHUB_API_CREDENTIALS = 'github-credentials-id-ks-onishi-esol'
-        REPO_URL = 'https://github.com/ks-onishi-esol/ks-onishi_temp.git'
-        BRANCH_NAME = 'main' // チェックアウトするブランチ名を設定
+        REPO_URL = 'https://github.com/ks-onishi-esol/ks-onishi_temp.git'   
     }
 
     stages {
         stage('Checkout') {
             steps {
                 script {
+                    def BRANCH_NAME = "${env.GITHUB_PR_SOURCE_BRANCH}" // マージ元のブランチを対象にテストを実施する
+                    
                     // GitHub Integration Plugin用のcheckout
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: "${env.BRANCH_NAME}"]],
+                        branches: [[name: "${BRANCH_NAME}"]],
                         doGenerateSubmoduleConfigurations: false,
                         extensions: [[$class: 'CleanCheckout']],
                         submoduleCfg: [],
                         userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: "${env.GITHUB_API_CREDENTIALS}"]]
                     ])
+                    
                 }
             }
         }
@@ -47,79 +49,35 @@ pipeline {
                 script {
                     echo 'Deploying...'
                     // 実際のデプロイコマンドをここに記述
+                    bat 'set'
+                    error("error occured!!")
                 }
             }
         }
     }
 
     post {
+        // 処理成功
+        success {
+            //
+            echo "success"
+        }
+
+        // 処理成功 (警告有り)
+        unstable {
+            //
+            echo "unstable"
+        }
+
+        // 処理失敗
+        failure {
+            echo "failure"
+        }
+
         always {
             script {
                 echo "Build finished. Status: ${currentBuild.currentResult}"
-                // 通知のコマンドをここに記述（例：メール通知やSlack通知）
-            }
-        }
-    }
-}
-pipeline {
-    agent any
-
-    environment {
-        GITHUB_API_CREDENTIALS = 'github-credentials-id-ks-onishi-esol'
-        REPO_URL = 'https://github.com/ks-onishi-esol/ks-onishi_temp.git'
-        BRANCH_NAME = 'main' // チェックアウトするブランチ名を設定
-    }
-
-    stages {
-        stage('Checkout') {
-            steps {
-                script {
-                    // GitHub Integration Plugin用のcheckout
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: "${env.BRANCH_NAME}"]],
-                        doGenerateSubmoduleConfigurations: false,
-                        extensions: [[$class: 'CleanCheckout']],
-                        submoduleCfg: [],
-                        userRemoteConfigs: [[url: "${env.REPO_URL}", credentialsId: "${env.GITHUB_API_CREDENTIALS}"]]
-                    ])
-                }
-            }
-        }
-
-        stage('Build') {
-            steps {
-                script {
-                    echo 'Building...'
-                    // 実際のビルドコマンドをここに記述
-                }
-            }
-        }
-
-        stage('Test') {
-            steps {
-                script {
-                    echo 'Testing...'
-                    // 実際のテストコマンドをここに記述
-                }
-            }
-        }
-
-        stage('Deploy') {
-            steps {
-                script {
-                    echo 'Deploying...'
-                    // 実際のデプロイコマンドをここに記述
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            script {
-                echo "Build finished. Status: ${currentBuild.currentResult}"
-                // 通知のコマンドをここに記述（例：メール通知やSlack通知）
+                githubPRStatusPublisher buildMessage: message(failureMsg: githubPRMessage('Can\'t set status; build failed.'), successMsg: githubPRMessage('Can\'t set status; build succeeded.')), statusMsg: githubPRMessage('${GITHUB_PR_COND_REF} run ended'), unstableAs: 'FAILURE'
             }
         }
     }
