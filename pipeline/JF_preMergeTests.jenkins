@@ -38,6 +38,10 @@ pipeline {
 
         // ジョブ名を省略する際に使用
         REMOVAL_TEST_PREFIX = "Trunk_Root_|Trunk_Test_|Trunk_TestRoot_"
+
+        // For Debug
+        List pre_commit_test_list = 'Builds/SDK/All_PresetPatterns_Build'
+
     }
 
     stages {
@@ -291,5 +295,5 @@ def summaryUpdateWithProjectName(summary, childJob, revision) {
     int minutes = (durationSeconds % 3600) / 60
     int seconds = durationSeconds % 60
     def formattedDuration = String.format("%02d:%02d:%02d", hours, minutes, seconds)
-    summary.appendText("${childJob.projectName} <a href=${childJob.absoluteUrl}>#${childJob.number}</a> ${jobStatus} (r${revision}$nodeName) Date: $formattedStartDate Run time: $formattedDuration<br>", false)
+    summary.appendText("${childJob.projectName} <a href=${childJob.absoluteUrl}>#${childJob.number}</a> ${jobStatus} (${revision}$nodeName) Date: $formattedStartDate Run time: $formattedDuration<br>", false)
 }
