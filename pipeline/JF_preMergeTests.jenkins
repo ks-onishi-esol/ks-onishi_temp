@@ -35,25 +35,8 @@ pipeline {
         REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts"                             // ワークスペース内のスクリプトディレクトリ名
         CORE_SCRIPTS_DIR        = "$LOCAL_CI_RESOURCE_DIR/$REPO_CORE_SCRIPTS_DIR"
         CORE_SCRIPTS_PATH       = "$WORKSPACE/$CORE_SCRIPTS_DIR"
-        // 今は一時的にビルドジョブのみ
-        //pre_commit_test_list = "Builds/SDK/All_PresetPatterns_Build"
-        //pre_commit_test_list = ""
-        /* 最終的にはこれで確認する。
-        pre_commit_test_list = [ 'Tests/Shell/Trunk_Root_Shell_Pearl',
-                              'Tests/Shell/Trunk_Root_Shell-RedFS_R-CarH3',
-                              'Tests/Shell/Trunk_Root_Shell-RedFS_R-CarH3_KSPrCP',
-                              'Tests/Shell/Trunk_Root_Shell-Prfile2_R-CarH3',
-                              'Tests/POSIX/Trunk_Root_PosixApiTest_Pearl',
-                              'Tests/POSIX/Trunk_Root_PosixApiTest-FsType0_R-CAR',
-                              'Tests/POSIX/Trunk_Root_PosixApiTest_S32G',
-                              'Tests/Network/Trunk_Root_SocketApi_R-CarH3',
-                              'Tests/Network/Trunk_Root_SocketApi_R-CarH3_KSPrCP',
-                              'Tests/File/Trunk_TestRoot_RedFSPOSIXApi_R-CAR',
-                              'Tests/SDK/Trunk_Boottime_production_S32G',
-                              'Builds/SDK/All_PresetPatterns_Build'
-                            ]
-        */
-        // コミットログでジョブ名を省略する際に使用
+
+        // ジョブ名を省略する際に使用
         REMOVAL_TEST_PREFIX = "Trunk_Root_|Trunk_Test_|Trunk_TestRoot_"
     }
 
@@ -61,11 +44,19 @@ pipeline {
         stage('Create Environment') {
             steps {
                 script {
-                    // pull requests の checksにステータスを表示する
-                    // setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'Do not approve pull requests as pre-commit testing is currently underway.', state: 'PENDING'        
                     // ジョブ実行用スクリプトをチェックアウト
                     scrRev = common.checkout(CREDENTIALS_ID, LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
                     println "scrRev: ${scrRev}"
+                    
+                    if (env.GITHUB_PR_HEAD_SHA) {
+                        // プルリクエストから呼ばれた場合
+                        env.GIT_COMMIT_HASH = env.GITHUB_PR_HEAD_SHA
+                    } else if (env.TEST_COMMIT_HASH) {
+                        // 手動実行且つ、TEST_COMMIT_HASHが設定されている
+                        env.GIT_COMMIT_HASH = env.TEST_COMMIT_HASH.trim()
+                    } else {
+                        env.GIT_COMMIT_HASH = ''
+                    }
                 }
             }
         }
@@ -84,7 +75,7 @@ pipeline {
                         // 子ジョブ呼び出し用パラメータ生成
                         def seedParams = []
                         seedParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "${params.REPO_URL_CI}"])
-                        seedParams.add([$class: "StringParameterValue", name: "CI_REVISION", value: "${env.GITHUB_PR_HEAD_SHA}"]) // pull requests したブランチの最新のコミットハッシュを渡す
+                        seedParams.add([$class: "StringParameterValue", name: "CI_REVISION", value: "${GIT_COMMIT_HASH}"]) // pull requests したブランチの最新のコミットハッシュを渡す
                         seedParams.add([$class: "StringParameterValue", name: "ROOT_PATH_TO_GENERATE", value: env.ROOT_PATH_TO_GENERATE])
                         seedParams.add([$class: "BooleanParameterValue", name: "ENABLE_SCHED",   value: false])
 
@@ -109,6 +100,9 @@ pipeline {
                             error("If you want to skip all tests, enable SKIP_PRE_MERGE_TESTS to perform them.")
                         }
 
+                        // summaryの作成
+                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre commit tests.</h3>")
+
                         def testStages = [:]
                         for (testJob in executeTestJobList) {
                             def TEST_JOB = testJob
@@ -120,7 +114,7 @@ pipeline {
                                     def buildParams  = []
                                     buildParams.add([$class: "StringParameterValue", name: "REPO_URL_SOURCE", value: "$REPO_URL_SOURCE"])
                                     buildParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "$REPO_URL_CI"])
-                                    buildParams.add([$class: "StringParameterValue", name: "SOURCE_REVISION", value: env.GITHUB_PR_HEAD_SHA])
+                                    buildParams.add([$class: "StringParameterValue", name: "SOURCE_REVISION", value: "${GIT_COMMIT_HASH}"])
                                     buildParams.add([$class: "StringParameterValue", name: "JOB_ROOT_PATH", value: env.ROOT_PATH_TO_GENERATE])
                                     buildParams.add([$class: "StringParameterValue", name: "NOTIFICATION_URL", value: ""])
                                     buildParams.add([$class: "BooleanParameterValue", name: "ENABLE_MENTION", value: "false"])
@@ -134,6 +128,9 @@ pipeline {
                                     } // if (TEST_JOB.contains('Boottime'))
 
                                     def childJob = build job: "${env.ROOT_PATH_TO_GENERATE}/${TEST_JOB}", parameters: buildParams, propagate: false
+
+                                    // 一周毎にsummaryを更新
+                                    summaryUpdateWithProjectName(summary, childJob, "$GIT_COMMIT_HASH")
 
                                     // [FIXME]
                                     // Boottime測定ジョブでFuSaオプション適用するとWarning(UNSTABLE)となり
@@ -185,8 +182,10 @@ pipeline {
                 deleteDir()
             }
             script {
-                // pull reqeusts のcheks に本ジョブのステータスを反映
-                githubPRStatusPublisher buildMessage: message(failureMsg: githubPRMessage('Can\'t set status; build failed.'), successMsg: githubPRMessage('Can\'t set status; build succeeded.')), statusMsg: githubPRMessage('${GITHUB_PR_COND_REF} run ended'), unstableAs: 'FAILURE'
+                if (!env.GITHUB_PR_HEAD_SHA) {
+                    // pull reqeusts のcheks に本ジョブのステータスを反映
+                    githubPRStatusPublisher buildMessage: message(failureMsg: githubPRMessage('Can\'t set status; build failed.'), successMsg: githubPRMessage('Can\'t set status; build succeeded.')), statusMsg: githubPRMessage('${GITHUB_PR_COND_REF} run ended'), unstableAs: 'FAILURE'
+                }
             }
         } // always
 
@@ -194,9 +193,6 @@ pipeline {
         success {
             // Jenkins ログ出力
             echo "Build succeeded. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
-
-            // pull requests ステータスの設定
-            setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is SUCCESS.', state: 'SUCCESS'
 
             // Teams へ通知
             // notifyBuildStatus(STATUS_SUCCESS)
@@ -206,9 +202,6 @@ pipeline {
         unstable {
             // Jenkins ログ出力
             echo "Build succeeded with warning. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
-            
-            // pull requests ステータスの設定
-            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is UNSTABLE.', state: 'FAILURE'
 
             // Teams へ通知
             // notifyBuildStatus(STATUS_UNSTABLE)
@@ -218,22 +211,11 @@ pipeline {
         failure {
             // Jenkins ログ出力
             echo "Build failed. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
-            
-            // pull requests ステータスの設定
-            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is FAILURE.', state: 'FAILURE' 
 
             // Teams へ通知
             // notifyBuildStatus(STATUS_FAILURE)
         }
-        
-        /*
-        // 処理中断
-        aborted {
-            // pull requests ステータスの設定
-            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is ABORTED.', state: 'ERROR'
-            
-        }
-        */
+
     } // post
 } // pipeline
 
@@ -271,4 +253,43 @@ def notifyBuildStatus(buildStatus) {
             echo 'Notification URL is not set and the processing is skipped.'
         }
     }
+}
+
+// JobIteratorで呼び出したジョブが終了した際に、実行したジョブの情報をsummaryに追記する。
+def summaryUpdateWithProjectName(summary, childJob, revision) {
+    // ステータス別の色指定
+    def jobStatus
+    switch(childJob.currentResult) {
+        case "SUCCESS":
+            jobStatus = "<span style='color:green'>${childJob.currentResult}</span>"
+            break
+        case "UNSTABLE":
+            jobStatus = "<span style='color:orange'>${childJob.currentResult}</span>"
+            break
+        case "FAILURE":
+            jobStatus = "<span style='color:red'>${childJob.currentResult}</span>"
+            break
+        case null:
+            jobStatus = "<span style='color:gray'>UNKNOWN</span>"
+            break
+        default:
+            jobStatus = "<span style='color:gray'>${childJob.currentResult}</span>"
+    }
+    // Epoch timeを yyyy-MM-dd HH:mm:ss 形式に変換
+    def startTime = new Date(childJob.startTimeInMillis)
+    def formattedStartDate = startTime.format("yyyy-MM-dd HH:mm:ss", TimeZone.getTimeZone('Asia/Tokyo'))
+    // AGENT_NAMEが設定されているか確認
+    if (childJob.buildVariables.AGENT_NAME != null) {
+        nodeName = ", " + childJob.buildVariables.AGENT_NAME
+    } else {
+        nodeName = ''
+    }
+    // durationを HH:mm:ss 形式に変換
+    def durationMillis = childJob.duration // duration in milliseconds
+    int durationSeconds = (durationMillis / 1000).toInteger() // convert BigDecimal to integer
+    int hours = durationSeconds / 3600
+    int minutes = (durationSeconds % 3600) / 60
+    int seconds = durationSeconds % 60
+    def formattedDuration = String.format("%02d:%02d:%02d", hours, minutes, seconds)
+    summary.appendText("${childJob.projectName} <a href=${childJob.absoluteUrl}>#${childJob.number}</a> ${jobStatus} (r${revision}$nodeName) Date: $formattedStartDate Run time: $formattedDuration<br>", false)
 }

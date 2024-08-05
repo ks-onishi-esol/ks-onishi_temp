@@ -42,16 +42,10 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premerge-tests') {
             description( '[Mandatory/必須] Subversion repository URL of trunk.  \n'
                         +'ex) https://github.com/emcos-sdk/emcos-platform-CI-testing.git' )
         }
-        textParam('MERGE_LIST',
+        stringParam('TEST_COMMIT_HASH',
                     '',
-                    '[Optional/任意] マージ対象フォルダ  \n'
-                   +'SVN_TRUNK_URL、SVN_URL_BRANCH からの相対フォルダを指定する。  \n'
-                   +'空欄の場合は SVN_URL_BRANCH に指定したリポジトリ内の更新内容すべてを差分として SVN_TRUNK_URL にマージする。  \n'
-                   +'Specify folders relative to SVN_TRUNK_URL and SVN_URL_BRANCH.   \n'
-                   +'If left blank, all updates in the repository specified by SVN_URL_BRANCH will be merged into SVN_TRUNK_URL as changes.  \n'
-                   +'ex)  \n'
-                   +'source/emcos-runtime/src/parts/bios/libbios/sysdepend/arm  \n'
-                   +'source/emcos-runtime/src/parts/mcos')
+                    'テスト対象のコミットハッシュ'  \n'
+                   +'Node to run this job.')
         booleanParam('SKIP_PRE_MERGE_TESTS',
                      false,
                      '[ONLY FOR TIS TEST CODES/TISテストコード専用]  \n'
