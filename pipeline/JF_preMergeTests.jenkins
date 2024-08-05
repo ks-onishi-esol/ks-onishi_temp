@@ -5,6 +5,7 @@
 //-------------------------------------------------------------------------------
 
 def executeTestJobList = []
+
 def userIdCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
 
 // Jenkinsのビルドステータス定義
@@ -35,7 +36,8 @@ pipeline {
         CORE_SCRIPTS_DIR        = "$LOCAL_CI_RESOURCE_DIR/$REPO_CORE_SCRIPTS_DIR"
         CORE_SCRIPTS_PATH       = "$WORKSPACE/$CORE_SCRIPTS_DIR"
         // 今は一時的にビルドジョブのみ
-        pre_commit_test_list = "Builds/SDK/All_PresetPatterns_Build"
+        //pre_commit_test_list = "Builds/SDK/All_PresetPatterns_Build"
+        //pre_commit_test_list = ""
         /* 最終的にはこれで確認する。
         pre_commit_test_list = [ 'Tests/Shell/Trunk_Root_Shell_Pearl',
                               'Tests/Shell/Trunk_Root_Shell-RedFS_R-CarH3',
@@ -59,6 +61,8 @@ pipeline {
         stage('Create Environment') {
             steps {
                 script {
+                    // pull requests の checksにステータスを表示する
+                    // setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'Do not approve pull requests as pre-commit testing is currently underway.', state: 'PENDING'        
                     // ジョブ実行用スクリプトをチェックアウト
                     scrRev = common.checkout(CREDENTIALS_ID, LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
                     println "scrRev: ${scrRev}"
@@ -79,7 +83,7 @@ pipeline {
                     if (!params.SKIP_PRE_MERGE_TESTS) {
                         // 子ジョブ呼び出し用パラメータ生成
                         def seedParams = []
-                        seedParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "${REPO_URL_CI}"])
+                        seedParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "${params.REPO_URL_CI}"])
                         seedParams.add([$class: "StringParameterValue", name: "CI_REVISION", value: "${env.GITHUB_PR_HEAD_SHA}"]) // pull requests したブランチの最新のコミットハッシュを渡す
                         seedParams.add([$class: "StringParameterValue", name: "ROOT_PATH_TO_GENERATE", value: env.ROOT_PATH_TO_GENERATE])
                         seedParams.add([$class: "BooleanParameterValue", name: "ENABLE_SCHED",   value: false])
@@ -191,6 +195,9 @@ pipeline {
             // Jenkins ログ出力
             echo "Build succeeded. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
 
+            // pull requests ステータスの設定
+            setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is SUCCESS.', state: 'SUCCESS'
+
             // Teams へ通知
             // notifyBuildStatus(STATUS_SUCCESS)
         }
@@ -199,6 +206,9 @@ pipeline {
         unstable {
             // Jenkins ログ出力
             echo "Build succeeded with warning. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
+            
+            // pull requests ステータスの設定
+            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is UNSTABLE.', state: 'FAILURE'
 
             // Teams へ通知
             // notifyBuildStatus(STATUS_UNSTABLE)
@@ -208,10 +218,22 @@ pipeline {
         failure {
             // Jenkins ログ出力
             echo "Build failed. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
+            
+            // pull requests ステータスの設定
+            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is FAILURE.', state: 'FAILURE' 
 
             // Teams へ通知
             // notifyBuildStatus(STATUS_FAILURE)
         }
+        
+        /*
+        // 処理中断
+        aborted {
+            // pull requests ステータスの設定
+            //setGitHubPullRequestStatus context: "${env.JOB_NAME}", message: 'pre commit tests status is ABORTED.', state: 'ERROR'
+            
+        }
+        */
     } // post
 } // pipeline
 
