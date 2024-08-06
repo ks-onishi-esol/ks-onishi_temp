@@ -1,0 +1,198 @@
+// Describes the pre-commit tests to be performed by the AutoMerge job. 
+// This variable is used to set the job parameter SELECT_PRE_COMMIT_TESTS and the environment variable PRE_COMMIT_TEST_LIST.
+// Builds/SDK/All_PresetPatterns_Build should be placed at the end of the list.
+List pre_commit_test_list = [ 'Tests/Shell/Trunk_Root_Shell_Pearl',
+                              'Tests/Shell/Trunk_Root_Shell-RedFS_R-CarH3',
+                              'Tests/Shell/Trunk_Root_Shell-RedFS_R-CarH3_KSPrCP',
+                              'Tests/Shell/Trunk_Root_Shell-Prfile2_R-CarH3',
+                              'Tests/POSIX/Trunk_Root_PosixApiTest_Pearl',
+                              'Tests/POSIX/Trunk_Root_PosixApiTest-FsType0_R-CAR',
+                              'Tests/POSIX/Trunk_Root_PosixApiTest_S32G',
+                              'Tests/Network/Trunk_Root_SocketApi_R-CarH3',
+                              'Tests/Network/Trunk_Root_SocketApi_R-CarH3_KSPrCP',
+                              'Tests/File/Trunk_TestRoot_RedFSPOSIXApi_R-CAR',
+                              'Tests/SDK/Trunk_Boottime_production_S32G',
+                              'Builds/SDK/All_PresetPatterns_Build'
+                            ]
+
+// For Debug
+ROOT_PATH_TO_GENERATE = '/Prototype_JOB/ks-onishi/preMergeTests'
+REPO_URL_CI = 'https://github.com/emcos-sdk/emcos-platform-CI-testing.git'
+
+// Converted to the form shown in the checkbox.
+List pre_commit_test_list_for_checkbox = pre_commit_test_list.collect { "'${it}'" }
+// Explicitly convert list to string.
+def pre_commit_test_list_string = pre_commit_test_list.join(",")
+
+pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premergeTests-another') {
+//pipelineJob(JOB_PATH_TO_GENERATE) {
+    disabled(false)
+    description( '本ジョブは、ユーザーがブランチで開発、修正したソースコードに対して、マージ前テストを行います。\n'
+                +'main ブランチ に対してpull request起票時にビルドが開始され、これに失敗した場合はpull requestが承認されない状態となるため、main ブランチ への不具合の混入を防ぎます。  \n'
+                +'This job merges and commits source code developed and modified in branches by users to the trunk.   \n'
+                +'Before committing to the trunk, it runs a test job, and if this fails, it cancels the commit to avoid introducing defects into the trunk.   \n'
+                +'[Manual] http://thq-server:8001/projects/esl-emcos-sdk-infrastructure/wiki/How_to_use_Auto_Merge_JOB')
+
+    parameters {
+        validatingString{
+            name('REPO_URL_SOURCE')
+            defaultValue('https://github.com/emcos-sdk/emcos-platform-CI-testing.git')
+            regex('^https://github.com/emcos-sdk/.+')
+            failedValidationMessage('Enter the URL of the top directory of trunk starting with "https://github.com/emcos-sdk//".')
+            description( '[Mandatory/必須] Subversion repository URL of trunk.  \n'
+                        +'ex) https://github.com/emcos-sdk/emcos-platform-CI-testing.git' )
+        }
+        stringParam('TEST_COMMIT_HASH',
+                    '',
+                    'テスト対象のコミットハッシュ\n'
+                   +'Node to run this job.')
+        booleanParam('SKIP_PRE_MERGE_TESTS',
+                     false,
+                     '[ONLY FOR TIS TEST CODES/TISテストコード専用]  \n'
+                    +'Don\'t check unless exceptionally permitted.  \n'
+                    +'特別に許可された場合以外は、チェックしないでください。  \n'
+                    +'  \n'
+                    +'Skip all pre-merge tests when checked.')
+        choiceParameter {
+            name('SELECT_SKIP_PRE_COMMIT_TESTS')
+            description('[Optional/任意] コミット前検証でスキップしたいテストを選択してください。全ての項目にチェックが入っている場合はエラーとなります。  \n'
+                        +'全てのテストを実行せずにコミットしたい場合は、SKIP_PRE_MERGE_TESTS オプションを使用してください。  \n'
+                        +'**特別な理由がない限り、Builds/SDK/All_PresetPatterns_Build の実行をスキップしないでください。**  \n'
+                        +'Select the tests you want to skip in the pre-commit test. An error will occur if all items are selected.  \n'
+                        +'If you want to commit without running any tests, use the SKIP_PRE_MERGE_TESTS option.  \n'
+                        +'**Do not skip running Builds/SDK/All_PresetPatterns_Build unless there is a specific reason.**')
+            filterable(true)
+            choiceType('PT_CHECKBOX')
+            script {
+                groovyScript {
+                    script {
+                        script("return$pre_commit_test_list_for_checkbox")
+                        sandbox(true)
+                    }
+                    fallbackScript {
+                        script("return[]") //Active Choice Pluginの設定が失敗した場合にはチェックボックスは空の状態で設定されます。
+                        sandbox(true)
+                    }
+                }
+            }
+            randomName('')
+            filterLength(0)
+        }
+        stringParam('NODE_NAMES',
+                    'primary_linux',
+                    'ジョブ実行ノード  \n'
+                   +'Node to run this job.')
+        stringParam('CUSTOM_WORKSPACE',
+                    'C:/Jenkins_Workspace/Builds/preMergeTests',
+                    'ビルド実行時に使用するカスタムワークスペースのディレクトリパスを指定します。  \n'
+                   +'デフォルトのワークスペースの代わりに、このパスが使用されます。  \n'
+                   +'Specify the directory path of the custom workspace to be used during build execution.  \n'
+                   +'This path will be used instead of the default workspace.')
+        stringParam('REPO_URL_CI',
+                    'https://github.com/emcos-sdk/emcos-platform-CI-testing.git',
+                    '本ジョブが利用する CI リソースの URL  \n'
+                   +'Subversion repository URL of CI.')
+        stringParam('ROOT_PATH_TO_GENERATE',
+                    ROOT_PATH_TO_GENERATE.replaceFirst('/$', '') + '/Generated',
+                    'コミット前テストジョブが生成されるルートフォルダを指定します。  \n'
+                   +'Specify the root folder where the job for pre-commit testing will be generated.')
+        stringParam('JOB_ROOT_PATH',
+                    ROOT_PATH_TO_GENERATE,
+                    'このジョブが使用するルートフォルダを指定する。  \n'
+                   +'Specify the root folder used by this job.  ')
+        stringParam('NOTIFICATION_URL',
+                    'https://esol1975.webhook.office.com/webhookb2/9d50fb2f-cbb6-47c8-b6fb-fda3f778250d@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/3ea883af89074a388356da7d135c8f77/ccbda89f-ddc8-4244-b832-8ff21c15e888',
+                    'URL for Teams notification  \n'
+                   +'AutoMerge JOB result notification  \n'
+                   +'https://esol1975.webhook.office.com/webhookb2/9d50fb2f-cbb6-47c8-b6fb-fda3f778250d@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/3ea883af89074a388356da7d135c8f77/ccbda89f-ddc8-4244-b832-8ff21c15e888  \n'
+                   +'\n'
+                   +'ex) CIチーム試験通知用チャンネル (Incoming Webhook)  \n'
+                   +'https://esol1975.webhook.office.com/webhookb2/02c78588-8c1a-42f4-a249-92367b2c19d0@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/fcbf46c0233a4648a6a348e671920357/44140c7f-506d-4d10-b984-425e76401f29')
+    }
+
+    environmentVariables {
+        env('PRE_COMMIT_TEST_LIST', pre_commit_test_list_string)
+        keepBuildVariables(true)
+        keepSystemVariables(true)
+    }
+
+    logRotator(100, 300, 10, 10)
+
+    properties {
+        disableResume()
+        // 最後の '/' が無いとポーリング時にエラーが発生する。
+        githubProjectUrl('https://github.com/emcos-sdk/emcos-platform-CI-testing.git/')
+
+        pipelineTriggers {
+            triggers {
+                githubPullRequests {
+                    triggerMode('CRON')
+                    spec('* * * * *') // Polling schedule
+                    preStatus(true) // Update the GitHub PR status to PENDING once the build is queued
+                    cancelQueued(false) // Cancel pending builds in the queue for the same PR
+                    abortRunning(false) // Abort running builds for the same PR
+                    skipFirstRun(false) // Skip older PRs on the first run
+                    events {
+                        Open() // Triggers a build of a pull request when the pull request is opened or reopened.
+                    }
+                    branchRestriction {
+                        targetBranch('main') // Restrict to specific branches if needed
+                    }
+
+                }
+            }
+        }
+    }
+
+
+    definition {
+        cpsScm {
+            scm {
+                gitSCM {
+                    userRemoteConfigs {
+                        userRemoteConfig {
+                            url(REPO_URL_CI.replaceFirst('/test/ci$', ''))
+                            credentialsId('CID_EP-CI')
+                            name('')
+                            refspec('')
+                        }
+                    }
+                    branches{ 
+                        branchSpec {
+                            name('main')
+                            //name('ks-onishi-preMergeTest')
+                        }
+                    }
+                    gitTool('Default')
+                    browser {}
+
+                    extensions {
+                        cloneOption {
+                            noTags(false)
+                            reference('')
+                            timeout(10)
+                            shallow(true)
+                            depth(1)
+                        }
+
+                        sparseCheckoutPaths {
+                            sparseCheckoutPaths {
+                                sparseCheckoutPath {
+                                    path('test/ci/pipeline/SDK')
+                                }
+                            }
+                        }
+
+                        relativeTargetDirectory {
+                            relativeTargetDir('pipeline')
+                        }
+                        wipeWorkspace()
+                    }
+                }
+            }
+
+            scriptPath('test/ci/pipeline/SDK/JF_PreMergeTests.jenkins')
+            lightweight(true)
+        }
+    }
+}

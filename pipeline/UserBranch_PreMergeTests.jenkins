@@ -44,7 +44,7 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premerge-tests') {
         }
         stringParam('TEST_COMMIT_HASH',
                     '',
-                    'テスト対象のコミットハッシュ'  \n'
+                    'テスト対象のコミットハッシュ  \n'
                    +'Node to run this job.')
         booleanParam('SKIP_PRE_MERGE_TESTS',
                      false,
@@ -122,25 +122,6 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premerge-tests') {
         disableResume()
         // 最後の '/' が無いとポーリング時にエラーが発生する。
         githubProjectUrl('https://github.com/emcos-sdk/emcos-platform-CI-testing.git/')
-
-        pipelineTriggers {
-            triggers {
-                githubPullRequests {
-                    spec('* * * * *') // Polling schedule
-                    triggerMode('CRON')
-                    events {
-                        Open() // Triggers a build of a pull request when the pull request is opened or reopened.
-                    }
-                    abortRunning(false) // Abort running builds for the same PR
-                    branchRestriction {
-                        targetBranch('main') // Restrict to specific branches if needed
-                    }
-                    cancelQueued(false) // Cancel pending builds in the queue for the same PR
-                    preStatus(true) // Update the GitHub PR status to PENDING once the build is queued
-                    skipFirstRun(false) // Skip older PRs on the first run
-                }
-            }
-        }
     }
 
 

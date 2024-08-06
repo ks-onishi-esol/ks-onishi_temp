@@ -27,9 +27,6 @@ pipeline {
     }
 
     environment {
-        // Jenkins に登録しているリポジトリ認証情報識別ID
-        CREDENTIALS_ID          = "CID_EP-CI"
-
         // ビルド用バッチの リポジトリ URL とclone先
         LOCAL_CI_RESOURCE_DIR   = "ci_resource"
         REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts"                             // ワークスペース内のスクリプトディレクトリ名
@@ -41,7 +38,6 @@ pipeline {
 
         // For Debug
         List pre_commit_test_list = 'Builds/SDK/All_PresetPatterns_Build'
-
     }
 
     stages {
@@ -49,17 +45,18 @@ pipeline {
             steps {
                 script {
                     // ジョブ実行用スクリプトをチェックアウト
-                    scrRev = common.checkout(CREDENTIALS_ID, LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
+                    scrRev = common.checkout(LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
                     println "scrRev: ${scrRev}"
                     
                     if (env.GITHUB_PR_HEAD_SHA) {
                         // プルリクエストから呼ばれた場合
                         env.GIT_COMMIT_HASH = env.GITHUB_PR_HEAD_SHA
                     } else if (env.TEST_COMMIT_HASH) {
-                        // 手動実行且つ、TEST_COMMIT_HASHが設定されている
+                        // 手動実行時にTEST_COMMIT_HASHが設定されている
                         env.GIT_COMMIT_HASH = env.TEST_COMMIT_HASH.trim()
                     } else {
-                        env.GIT_COMMIT_HASH = ''
+                        // 手動実行時にTEST_COMMIT_HASHの指定が無い場合はHEADの値を設定
+                        env.GIT_COMMIT_HASH = "${scrRev}"
                     }
                 }
             }
@@ -105,7 +102,7 @@ pipeline {
                         }
 
                         // summaryの作成
-                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre commit tests.</h3>")
+                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre merge tests.</h3>")
 
                         def testStages = [:]
                         for (testJob in executeTestJobList) {
@@ -186,7 +183,7 @@ pipeline {
                 deleteDir()
             }
             script {
-                if (!env.GITHUB_PR_HEAD_SHA) {
+                if (env.GITHUB_PR_HEAD_SHA) {
                     // pull reqeusts のcheks に本ジョブのステータスを反映
                     githubPRStatusPublisher buildMessage: message(failureMsg: githubPRMessage('Can\'t set status; build failed.'), successMsg: githubPRMessage('Can\'t set status; build succeeded.')), statusMsg: githubPRMessage('${GITHUB_PR_COND_REF} run ended'), unstableAs: 'FAILURE'
                 }
