@@ -27,6 +27,8 @@ pipeline {
     }
 
     environment {
+        CREDENTIALS_ID = "CID_GITHUB"
+
         // ビルド用バッチの リポジトリ URL とclone先
         LOCAL_CI_RESOURCE_DIR   = "ci_resource"
         REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts"                             // ワークスペース内のスクリプトディレクトリ名
@@ -37,7 +39,7 @@ pipeline {
         REMOVAL_TEST_PREFIX = "Trunk_Root_|Trunk_Test_|Trunk_TestRoot_"
 
         // For Debug
-        List pre_commit_test_list = 'Builds/SDK/All_PresetPatterns_Build'
+        List pre_commit_test_list = 'Tests/SDK/SampleStub'
     }
 
     stages {
@@ -45,7 +47,7 @@ pipeline {
             steps {
                 script {
                     // ジョブ実行用スクリプトをチェックアウト
-                    scrRev = common.checkout(LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
+                    scrRev = common.checkout(CREDENTIALS_ID, LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
                     println "scrRev: ${scrRev}"
                     
                     if (env.GITHUB_PR_HEAD_SHA) {
@@ -58,6 +60,9 @@ pipeline {
                         // 手動実行時にTEST_COMMIT_HASHの指定が無い場合はHEADの値を設定
                         env.GIT_COMMIT_HASH = "${scrRev}"
                     }
+
+                    // ビルド情報表示
+                    currentBuild.displayName = "#$BUILD_NUMBER (${env.GIT_COMMIT_HASH})"
                 }
             }
         }
@@ -91,7 +96,7 @@ pipeline {
                 script {
                     // マージ前テストを省略するフラグが立っていない場合に実行
                     if (!params.SKIP_PRE_MERGE_TESTS) {
-
+                    
                         // プレコミットテストの選択機能
                         List selectedTestJobList = "${params.SELECT_SKIP_PRE_COMMIT_TESTS}".split(",").collect { it.trim() }
                         List preCommitTestJobList = "${env.PRE_COMMIT_TEST_LIST}".split(",").collect { it.replace("'", "").trim()}
@@ -102,7 +107,7 @@ pipeline {
                         }
 
                         // summaryの作成
-                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre merge tests.</h3>")
+                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre merge tests results.</h3>")
 
                         def testStages = [:]
                         for (testJob in executeTestJobList) {

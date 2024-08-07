@@ -1,4 +1,4 @@
-// Describes the pre-commit tests to be performed by the AutoMerge job. 
+// Describes the pre-commit tests to be performed by the PreMergeTests job. 
 // This variable is used to set the job parameter SELECT_PRE_COMMIT_TESTS and the environment variable PRE_COMMIT_TEST_LIST.
 // Builds/SDK/All_PresetPatterns_Build should be placed at the end of the list.
 List pre_commit_test_list = [ 'Tests/Shell/Trunk_Root_Shell_Pearl',
@@ -12,6 +12,7 @@ List pre_commit_test_list = [ 'Tests/Shell/Trunk_Root_Shell_Pearl',
                               'Tests/Network/Trunk_Root_SocketApi_R-CarH3_KSPrCP',
                               'Tests/File/Trunk_TestRoot_RedFSPOSIXApi_R-CAR',
                               'Tests/SDK/Trunk_Boottime_production_S32G',
+                              'Tests//SDK/SampleStub',
                               'Builds/SDK/All_PresetPatterns_Build'
                             ]
 
@@ -24,15 +25,11 @@ List pre_commit_test_list_for_checkbox = pre_commit_test_list.collect { "'${it}'
 // Explicitly convert list to string.
 def pre_commit_test_list_string = pre_commit_test_list.join(",")
 
-pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premergeTests-another') {
+pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/PreMergeTests') {
 //pipelineJob(JOB_PATH_TO_GENERATE) {
     disabled(false)
     description( '本ジョブは、ユーザーがブランチで開発、修正したソースコードに対して、マージ前テストを行います。\n'
-                +'main ブランチ に対してpull request起票時にビルドが開始され、これに失敗した場合はpull requestが承認されない状態となるため、main ブランチ への不具合の混入を防ぎます。  \n'
-                +'This job merges and commits source code developed and modified in branches by users to the trunk.   \n'
-                +'Before committing to the trunk, it runs a test job, and if this fails, it cancels the commit to avoid introducing defects into the trunk.   \n'
-                +'[Manual] http://thq-server:8001/projects/esl-emcos-sdk-infrastructure/wiki/How_to_use_Auto_Merge_JOB')
-
+                +'main ブランチ に対してpull request起票時にビルドが開始され、これに失敗した場合はpull requestが承認されない状態となるため、main ブランチ への不具合の混入を防ぎます。)
     parameters {
         validatingString{
             name('REPO_URL_SOURCE')
@@ -46,20 +43,11 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premergeTests-another') {
                     '',
                     'テスト対象のコミットハッシュ\n'
                    +'Node to run this job.')
-        booleanParam('SKIP_PRE_MERGE_TESTS',
-                     false,
-                     '[ONLY FOR TIS TEST CODES/TISテストコード専用]  \n'
-                    +'Don\'t check unless exceptionally permitted.  \n'
-                    +'特別に許可された場合以外は、チェックしないでください。  \n'
-                    +'  \n'
-                    +'Skip all pre-merge tests when checked.')
         choiceParameter {
             name('SELECT_SKIP_PRE_COMMIT_TESTS')
-            description('[Optional/任意] コミット前検証でスキップしたいテストを選択してください。全ての項目にチェックが入っている場合はエラーとなります。  \n'
-                        +'全てのテストを実行せずにコミットしたい場合は、SKIP_PRE_MERGE_TESTS オプションを使用してください。  \n'
+            description('[Optional/任意] マージ前検証でスキップしたいテストを選択してください。全ての項目にチェックが入っている場合はエラーとなります。  \n'
                         +'**特別な理由がない限り、Builds/SDK/All_PresetPatterns_Build の実行をスキップしないでください。**  \n'
                         +'Select the tests you want to skip in the pre-commit test. An error will occur if all items are selected.  \n'
-                        +'If you want to commit without running any tests, use the SKIP_PRE_MERGE_TESTS option.  \n'
                         +'**Do not skip running Builds/SDK/All_PresetPatterns_Build unless there is a specific reason.**')
             filterable(true)
             choiceType('PT_CHECKBOX')
@@ -131,7 +119,7 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/premergeTests-another') {
                     preStatus(true) // Update the GitHub PR status to PENDING once the build is queued
                     cancelQueued(false) // Cancel pending builds in the queue for the same PR
                     abortRunning(false) // Abort running builds for the same PR
-                    skipFirstRun(false) // Skip older PRs on the first run
+                    skipFirstRun(true) // Skip older PRs on the first run
                     events {
                         Open() // Triggers a build of a pull request when the pull request is opened or reopened.
                     }

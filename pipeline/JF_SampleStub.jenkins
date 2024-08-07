@@ -1,0 +1,118 @@
+#!groovy
+//-------------------------------------------------------------------------------
+// Purpose     : PreMergeTests動作確認用スタブ
+// License     : eSOL Co.,Ltd.
+//-------------------------------------------------------------------------------
+
+def executeTestJobList = []
+
+def userIdCause = currentBuild.getBuildCauses('hudson.model.Cause$UserIdCause')
+
+// Jenkinsのビルドステータス定義
+// 各スクリプトの戻り値としても使用する
+STATUS_SUCCESS     = 0          // JenkinsステータスSUCCESS
+STATUS_FAILURE     = 1          // JenkinsステータスFAILURE
+STATUS_UNSTABLE    = 2          // JenkinsステータスUNSTABLE
+
+pipeline {
+
+    agent {
+        node {
+            // ノードのラベルはジョブの設定から受け取ることとしている
+            label NODE_NAMES
+        }
+    }
+
+    environment {
+        CREDENTIALS_ID = "CID_GITHUB"
+
+        // ビルド用バッチの リポジトリ URL とclone先
+        LOCAL_CI_RESOURCE_DIR   = "ci_resource"
+        REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts"                             // ワークスペース内のスクリプトディレクトリ名
+        CORE_SCRIPTS_DIR        = "$LOCAL_CI_RESOURCE_DIR/$REPO_CORE_SCRIPTS_DIR"
+        CORE_SCRIPTS_PATH       = "$WORKSPACE/$CORE_SCRIPT"
+    }
+
+    stages {
+        stage('Create Environment') {
+            steps {
+                script {
+                    // ジョブ実行用スクリプトをチェックアウト
+                    scrRev = common.checkout(CREDENTIALS_ID, LOCAL_CI_RESOURCE_DIR, REPO_CORE_SCRIPTS_DIR, params.REPO_URL_CI, '')
+                    println "scrRev: ${scrRev}"
+                    
+                    // ビルド情報表示
+                    currentBuild.displayName = "#$BUILD_NUMBER (${env.scrRev})"
+                }
+            }
+        }
+    } // stages
+
+    // 終了処理
+    post {
+        // 必ず実行
+        always {
+            // 終了処理
+            echo 'clean up ci_resource directory.'
+            dir(env.WORKSPACE) {
+                deleteDir()
+            }
+        } // always
+
+        // 処理成功
+        success {
+            // Jenkins ログ出力
+            echo "Build succeeded. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
+
+            // Teams へ通知
+            // notifyBuildStatus(STATUS_SUCCESS)
+        }
+
+        // 処理成功 (警告有り)
+        unstable {
+            // Jenkins ログ出力
+            echo "Build succeeded with warning. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
+
+            // Teams へ通知
+            // notifyBuildStatus(STATUS_UNSTABLE)
+        }
+
+        // 処理失敗
+        failure {
+            // Jenkins ログ出力
+            echo "Build failed. ${env.JOB_NAME}:#${env.BUILD_NUMBER}"
+
+            // Teams へ通知
+            // notifyBuildStatus(STATUS_FAILURE)
+        }
+
+    } // post
+} // pipeline
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+// Teamsへビルド結果通知
+def notifyBuildStatus(buildStatus) {
+    script {
+        //通知先設定が有効な場合
+        if (params.NOTIFICATION_URL) {
+            // withCredentials 内で参照する値を環境変数に追加
+            env.BUILD_STATUS = buildStatus
+            // teams 通知スクリプト実行
+            sh '''
+                py -3 $CORE_SCRIPTS_PATH/NotificationScripts/SendAutoMergeToTeams.py \
+                                    --url $NOTIFICATION_URL \
+                                    --jobName $JOB_NAME \
+                                    --jobUrl $BUILD_URL \
+                                    --buildNumber $BUILD_NUMBER \
+                                    --status $BUILD_STATUS \
+                                    --user $USER_NAME \
+                                    --accountInfoFile $CORE_SCRIPTS_PATH/NotificationScripts/MailAccountList.txt
+            '''
+        } else {
+            echo 'Notification URL is not set and the processing is skipped.'
+        }
+    }
+}
