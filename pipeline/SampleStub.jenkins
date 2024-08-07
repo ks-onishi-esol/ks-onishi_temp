@@ -67,7 +67,7 @@ pipelineJob(JOB_PATH_TO_GENERATE) {
                 }
             }
 
-            scriptPath('test/ci/pipeline/SDK/JF_SampleStub.jenkins')
+            scriptPath('test/ci/pipeline/SDK/JF_SampleStub.jenkins')           
             lightweight(true)
         }
     }

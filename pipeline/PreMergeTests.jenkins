@@ -116,12 +116,13 @@ pipelineJob('Prototype_JOB/ks-onishi/preMergeTests/SDK/PreMergeTests') {
                 githubPullRequests {
                     triggerMode('CRON')
                     spec('* * * * *') // Polling schedule
-                    preStatus(true) // Update the GitHub PR status to PENDING once the build is queued
-                    cancelQueued(false) // Cancel pending builds in the queue for the same PR
+                    preStatus(false) // Update the GitHub PR status to PENDING once the build is queued
+                    cancelQueued(true) // Cancel pending builds in the queue for the same PR
                     abortRunning(false) // Abort running builds for the same PR
                     skipFirstRun(true) // Skip older PRs on the first run
                     events {
                         Open() // Triggers a build of a pull request when the pull request is opened or reopened.
+                        commitChanged() // Triggers when a previously built pull request's hash has changed from the previous state (i.e., a new commit is pushed, or force-pushed).
                     }
                     branchRestriction {
                         targetBranch('main') // Restrict to specific branches if needed

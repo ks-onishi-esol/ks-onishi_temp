@@ -24,6 +24,7 @@ pipeline {
     }
 
     environment {
+        //
         CREDENTIALS_ID = "CID_GITHUB"
 
         // ビルド用バッチの リポジトリ URL とclone先

@@ -31,7 +31,7 @@ pipeline {
 
         // ビルド用バッチの リポジトリ URL とclone先
         LOCAL_CI_RESOURCE_DIR   = "ci_resource"
-        REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts"                             // ワークスペース内のスクリプトディレクトリ名
+        REPO_CORE_SCRIPTS_DIR   = "test/ci/coreScripts" // ワークスペース内のスクリプトディレクトリ名
         CORE_SCRIPTS_DIR        = "$LOCAL_CI_RESOURCE_DIR/$REPO_CORE_SCRIPTS_DIR"
         CORE_SCRIPTS_PATH       = "$WORKSPACE/$CORE_SCRIPTS_DIR"
 
@@ -39,7 +39,7 @@ pipeline {
         REMOVAL_TEST_PREFIX = "Trunk_Root_|Trunk_Test_|Trunk_TestRoot_"
 
         // For Debug
-        List pre_commit_test_list = 'Tests/SDK/SampleStub'
+        List pre_commit_test_list = 'Builds/SDK/All_PresetPatterns_Build'
     }
 
     stages {
@@ -76,103 +76,96 @@ pipeline {
             } // For Debug
             steps {
                 script {
-                    // マージ前テストを省略するフラグが立っていない場合に実行
-                    if (!params.SKIP_PRE_MERGE_TESTS) {
-                        // 子ジョブ呼び出し用パラメータ生成
-                        def seedParams = []
-                        seedParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "${params.REPO_URL_CI}"])
-                        seedParams.add([$class: "StringParameterValue", name: "CI_REVISION", value: "${GIT_COMMIT_HASH}"]) // pull requests したブランチの最新のコミットハッシュを渡す
-                        seedParams.add([$class: "StringParameterValue", name: "ROOT_PATH_TO_GENERATE", value: env.ROOT_PATH_TO_GENERATE])
-                        seedParams.add([$class: "BooleanParameterValue", name: "ENABLE_SCHED",   value: false])
+                    // 子ジョブ呼び出し用パラメータ生成
+                    def seedParams = []
+                    seedParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "${params.REPO_URL_CI}"])
+                    seedParams.add([$class: "StringParameterValue", name: "CI_REVISION", value: "${GIT_COMMIT_HASH}"]) // pull requests したブランチの最新のコミットハッシュを渡す
+                    seedParams.add([$class: "StringParameterValue", name: "ROOT_PATH_TO_GENERATE", value: env.ROOT_PATH_TO_GENERATE])
+                    seedParams.add([$class: "BooleanParameterValue", name: "ENABLE_SCHED",   value: false])
 
-                        build job: "${env.JOB_ROOT_PATH}/Tests/Seed", parameters: seedParams
-                    }
+                    build job: "${env.JOB_ROOT_PATH}/Tests/Seed", parameters: seedParams
                 }
             }
         }
 
         stage('Run Test Jobs') {
             steps {
-                script {
-                    // マージ前テストを省略するフラグが立っていない場合に実行
-                    if (!params.SKIP_PRE_MERGE_TESTS) {
+                script {                    
+                    // プレコミットテストの選択機能
+                    List selectedTestJobList = "${params.SELECT_SKIP_PRE_COMMIT_TESTS}".split(",").collect { it.trim() }
+                    List preCommitTestJobList = "${env.PRE_COMMIT_TEST_LIST}".split(",").collect { it.replace("'", "").trim()}
+                    executeTestJobList = (preCommitTestJobList.toSet() - selectedTestJobList.toSet()) as List
                     
-                        // プレコミットテストの選択機能
-                        List selectedTestJobList = "${params.SELECT_SKIP_PRE_COMMIT_TESTS}".split(",").collect { it.trim() }
-                        List preCommitTestJobList = "${env.PRE_COMMIT_TEST_LIST}".split(",").collect { it.replace("'", "").trim()}
-                        executeTestJobList = (preCommitTestJobList.toSet() - selectedTestJobList.toSet()) as List
-                        
-                        if (executeTestJobList.size() == 0) {
-                            error("If you want to skip all tests, enable SKIP_PRE_MERGE_TESTS to perform them.")
-                        }
+                    if (executeTestJobList.size() == 0) {
+                        error("If you want to skip all tests, enable SKIP_PRE_MERGE_TESTS to perform them.")
+                    }
 
-                        // summaryの作成
-                        def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre merge tests results.</h3>")
+                    // summaryの作成
+                    def summary = createSummary(icon: 'headshot.gif', text: "<h3>pre merge tests results.</h3>")
 
-                        def testStages = [:]
-                        for (testJob in executeTestJobList) {
-                            def TEST_JOB = testJob
-                            testStages[TEST_JOB] = {
-                                def STAGE_NAME = extractJobPathToTestName(TEST_JOB , REMOVAL_TEST_PREFIX)
-                                stage("${STAGE_NAME}") {
-                                    // 全テスト共通パラメータ
-                                    // ※ 一部のパラメータは、テストジョブによっては参照しない。
-                                    def buildParams  = []
-                                    buildParams.add([$class: "StringParameterValue", name: "REPO_URL_SOURCE", value: "$REPO_URL_SOURCE"])
-                                    buildParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "$REPO_URL_CI"])
-                                    buildParams.add([$class: "StringParameterValue", name: "SOURCE_REVISION", value: "${GIT_COMMIT_HASH}"])
-                                    buildParams.add([$class: "StringParameterValue", name: "JOB_ROOT_PATH", value: env.ROOT_PATH_TO_GENERATE])
-                                    buildParams.add([$class: "StringParameterValue", name: "NOTIFICATION_URL", value: ""])
-                                    buildParams.add([$class: "BooleanParameterValue", name: "ENABLE_MENTION", value: "false"])
-                                    if (TEST_JOB.contains('Boottime')) {
-                                        // BootCheckジョブ実行時のビルドパラメータ
-                                        build_param_kernel = '-DMCOS_CFG_TPOOL_MAX="0" -DUSE_EB_RUNTIME="OFF" -DMCOS_CFG_DS_TRACE_ENABLE="OFF" -DMCOS_CFG_DS_PRINT_ENABLE="OFF" -DMCOS_CFG_DS_TIME_ENABLE="0" -DTPART_ENABLED="OFF"'
-                                        build_param_ru     = '-DUSER_SAMPLE="OFF" -DUSER_TTY_DEVICE_DRIVER="OFF" -DUSER_SHELL="OFF" -DUSE_EB_RUNTIME="OFF" -DMCOS_FUSA="ON"'
+                    def testStages = [:]
+                    for (testJob in executeTestJobList) {
+                        def TEST_JOB = testJob
+                        testStages[TEST_JOB] = {
+                            def STAGE_NAME = extractJobPathToTestName(TEST_JOB , REMOVAL_TEST_PREFIX)
+                            stage("${STAGE_NAME}") {
+                                // 全テスト共通パラメータ
+                                // ※ 一部のパラメータは、テストジョブによっては参照しない。
+                                def buildParams  = []
+                                buildParams.add([$class: "StringParameterValue", name: "REPO_URL_SOURCE", value: "$REPO_URL_SOURCE"])
+                                buildParams.add([$class: "StringParameterValue", name: "REPO_URL_CI", value: "$REPO_URL_CI"])
+                                buildParams.add([$class: "StringParameterValue", name: "SOURCE_REVISION", value: "${GIT_COMMIT_HASH}"])
+                                buildParams.add([$class: "StringParameterValue", name: "JOB_ROOT_PATH", value: env.ROOT_PATH_TO_GENERATE])
+                                buildParams.add([$class: "StringParameterValue", name: "NOTIFICATION_URL", value: ""])
+                                buildParams.add([$class: "BooleanParameterValue", name: "ENABLE_MENTION", value: "false"])
+                                if (TEST_JOB.contains('Boottime')) {
+                                    // BootCheckジョブ実行時のビルドパラメータ
+                                    build_param_kernel = '-DMCOS_CFG_TPOOL_MAX="0" -DUSE_EB_RUNTIME="OFF" -DMCOS_CFG_DS_TRACE_ENABLE="OFF" -DMCOS_CFG_DS_PRINT_ENABLE="OFF" -DMCOS_CFG_DS_TIME_ENABLE="0" -DTPART_ENABLED="OFF"'
+                                    build_param_ru     = '-DUSER_SAMPLE="OFF" -DUSER_TTY_DEVICE_DRIVER="OFF" -DUSER_SHELL="OFF" -DUSE_EB_RUNTIME="OFF" -DMCOS_FUSA="ON"'
 
-                                        buildParams.add([$class: "StringParameterValue", name: "BUILD_PARAM_KERNEL", value: build_param_kernel])  // BootCheck用カーネルビルドパラメータ
-                                        buildParams.add([$class: "StringParameterValue", name: "BUILD_PARAM_RU",     value: build_param_ru])      // BootCheck用レジデントユニット(RU)ビルドパラメータ
-                                    } // if (TEST_JOB.contains('Boottime'))
+                                    buildParams.add([$class: "StringParameterValue", name: "BUILD_PARAM_KERNEL", value: build_param_kernel])  // BootCheck用カーネルビルドパラメータ
+                                    buildParams.add([$class: "StringParameterValue", name: "BUILD_PARAM_RU",     value: build_param_ru])      // BootCheck用レジデントユニット(RU)ビルドパラメータ
+                                } // if (TEST_JOB.contains('Boottime'))
 
-                                    def childJob = build job: "${env.ROOT_PATH_TO_GENERATE}/${TEST_JOB}", parameters: buildParams, propagate: false
+                                def childJob = build job: "${env.ROOT_PATH_TO_GENERATE}/${TEST_JOB}", parameters: buildParams, propagate: false
 
-                                    // 一周毎にsummaryを更新
-                                    summaryUpdateWithProjectName(summary, childJob, "$GIT_COMMIT_HASH")
+                                // 一周毎にsummaryを更新
+                                summaryUpdateWithProjectName(summary, childJob, "$GIT_COMMIT_HASH")
 
-                                    // [FIXME]
-                                    // Boottime測定ジョブでFuSaオプション適用するとWarning(UNSTABLE)となり
-                                    // AutoMergeがエラーで止まってしまうので、一時的にUNSTABLEは無視して先へ進むようにする。
-                                    // FuSaオプション適用ビルドでSUCCESSするようになったらこのif文はcopyArtifactsを残して削除する。
-                                    // テストジョブ呼び出し時の propagate: false も削除する。
-                                    if (TEST_JOB.contains('Boottime')) {
-                                        // FuSa 向けビルド済みオブジェクトファイルを取得
-                                        copyArtifacts ( projectName: "${env.ROOT_PATH_TO_GENERATE}/${TEST_JOB}", 
-                                                        selector: specific("${childJob.number}"), 
-                                                        filter: "${OBJ_PATH}/*.*", 
-                                                        target: "source", 
-                                                        optional: true)
+                                // [FIXME]
+                                // Boottime測定ジョブでFuSaオプション適用するとWarning(UNSTABLE)となり
+                                // PreMergeTestsがエラーで止まってしまうので、一時的にUNSTABLEは無視して先へ進むようにする。
+                                // FuSaオプション適用ビルドでSUCCESSするようになったらこのif文はcopyArtifactsを残して削除する。
+                                // テストジョブ呼び出し時の propagate: false も削除する。
+                                if (TEST_JOB.contains('Boottime')) {
+                                    // FuSa 向けビルド済みオブジェクトファイルを取得
+                                    copyArtifacts ( projectName: "${env.ROOT_PATH_TO_GENERATE}/${TEST_JOB}", 
+                                                    selector: specific("${childJob.number}"), 
+                                                    filter: "${OBJ_PATH}/*.*", 
+                                                    target: "source", 
+                                                    optional: true)
 
-                                        switch (childJob.result) {
-                                            case "FAILURE"  : error("Failed to build of ${TEST_JOB}"); break
-                                            case "UNSTABLE" : echo("Detected build warning of ${TEST_JOB}. But treat it as SUCCESS."); break
-                                            case "NOT_BUILT": error("Not built of ${TEST_JOB}"); break
-                                            case "ABORTED"  : error("Aborted to build of ${TEST_JOB}"); break
-                                        //  case "SUCCESS"  : echo("SUCCESS to build of ${TEST_JOB}")
-                                        } // switch (childJob.result)
-                                    } else {
-                                        switch (childJob.result) {
-                                            case "FAILURE"  : error("Failed to build of ${TEST_JOB}"); break
-                                            case "UNSTABLE" : error("Detected build warning of ${TEST_JOB}"); break
-                                            case "NOT_BUILT": error("Not built of ${TEST_JOB}"); break
-                                            case "ABORTED"  : error("Aborted to build of ${TEST_JOB}"); break
-                                        //  case "SUCCESS"  : echo("SUCCESS to build of ${TEST_JOB}")
-                                        } // switch (childJob.result)
-                                    } // else
-                                } // stage
-                            } // testStages[TEST_JOB]
-                        } // for
-                        testStages.failFast = true
-                        parallel(testStages)
-                    } // if (!params.SKIP_PRE_MERGE_TESTS)
+                                    switch (childJob.result) {
+                                        case "FAILURE"  : error("Failed to build of ${TEST_JOB}"); break
+                                        case "UNSTABLE" : echo("Detected build warning of ${TEST_JOB}. But treat it as SUCCESS."); break
+                                        case "NOT_BUILT": error("Not built of ${TEST_JOB}"); break
+                                        case "ABORTED"  : error("Aborted to build of ${TEST_JOB}"); break
+                                    //  case "SUCCESS"  : echo("SUCCESS to build of ${TEST_JOB}")
+                                    } // switch (childJob.result)
+                                } else {
+                                    switch (childJob.result) {
+                                        case "FAILURE"  : error("Failed to build of ${TEST_JOB}"); break
+                                        case "UNSTABLE" : error("Detected build warning of ${TEST_JOB}"); break
+                                        case "NOT_BUILT": error("Not built of ${TEST_JOB}"); break
+                                        case "ABORTED"  : error("Aborted to build of ${TEST_JOB}"); break
+                                    //  case "SUCCESS"  : echo("SUCCESS to build of ${TEST_JOB}")
+                                    } // switch (childJob.result)
+                                } // else
+                            } // stage
+                        } // testStages[TEST_JOB]
+                    } // for
+                    testStages.failFast = true
+                    parallel(testStages)
                 } // script
             } // steps
         } // stage('Run Test Jobs')
