@@ -1,0 +1,74 @@
+pipelineJob(JOB_PATH_TO_GENERATE) {
+    disabled(false)
+    description( '動作確認用')
+    parameters {
+        stringParam('REPO_URL_CI',
+                    'https://github.com/emcos-sdk/emcos-platform-CI-testing.git',
+                    '本ジョブが利用する CI リソースの URL  \n'
+                   +'Subversion repository URL of CI.')
+        stringParam('NODE_NAMES',
+                    'primary_linux',
+                    'ジョブ実行ノード  \n'
+                   +'Node to run this job.')
+        stringParam('NOTIFICATION_URL',
+                    'https://esol1975.webhook.office.com/webhookb2/02c78588-8c1a-42f4-a249-92367b2c19d0@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/fcbf46c0233a4648a6a348e671920357/44140c7f-506d-4d10-b984-425e76401f29',
+                    'URL for Teams notification  \n'
+                   +'AutoMerge JOB result notification  \n'
+                   +'https://esol1975.webhook.office.com/webhookb2/9d50fb2f-cbb6-47c8-b6fb-fda3f778250d@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/3ea883af89074a388356da7d135c8f77/ccbda89f-ddc8-4244-b832-8ff21c15e888  \n'
+                   +'\n'
+                   +'ex) CIチーム試験通知用チャンネル (Incoming Webhook)  \n'
+                   +'https://esol1975.webhook.office.com/webhookb2/02c78588-8c1a-42f4-a249-92367b2c19d0@3e9630fd-f264-46c9-b0ca-f331ad8f6c7a/IncomingWebhook/fcbf46c0233a4648a6a348e671920357/44140c7f-506d-4d10-b984-425e76401f29')
+    }
+    logRotator(100, 300, 10, 10)
+
+    definition {
+        cpsScm {
+            scm {
+                gitSCM {
+                    userRemoteConfigs {
+                        userRemoteConfig {
+                            url(REPO_URL_CI.replaceFirst('/test/ci$', ''))
+                            credentialsId('CID_EP-CI')
+                            name('')
+                            refspec('')
+                        }
+                    }
+                    branches{ 
+                        branchSpec {
+                            //name('main')
+                            name('ks-onishi-githubIntegration')
+                        }
+                    }
+                    gitTool('Default')
+                    browser {}
+
+                    extensions {
+                        cloneOption {
+                            noTags(false)
+                            reference('')
+                            timeout(10)
+                            shallow(true)
+                            depth(1)
+                        }
+
+                        sparseCheckoutPaths {
+                            sparseCheckoutPaths {
+                                sparseCheckoutPath {
+                                    path('test/ci/pipeline/SDK')
+                                }
+                            }
+                        }
+
+                        relativeTargetDirectory {
+                            relativeTargetDir('pipeline')
+                        }
+                        wipeWorkspace()
+                    }
+                }
+            }
+
+            scriptPath('test/ci/pipeline/SDK/JF_SampleStub.jenkins')           
+            lightweight(true)
+        }
+    }
+}
